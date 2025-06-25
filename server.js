@@ -3,9 +3,10 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 const path = require("path");
-const cookieJar = {};
+
 const { rewriteHTML, rewriteCSS } = require("./utils/rewrite");
 const { createWebSocketProxy } = require("./utils/ws-proxy");
+const { storeCookies, getCookieHeader } = require("./utils/cookie-handler");
 
 const app = express();
 app.use(express.static("public"));
@@ -26,11 +27,8 @@ app.get("/proxy", (req, res) => {
   const clientHeaders = {
     "User-Agent": "Mozilla/5.0",
     Referer: req.headers.referer || "",
+    Cookie: getCookieHeader(urlObj.hostname) || "",
   };
-
-  if (cookieJar[urlObj.hostname]) {
-    clientHeaders.Cookie = cookieJar[urlObj.hostname];
-  }
 
   const lib = target.startsWith("https") ? https : http;
 
@@ -47,9 +45,7 @@ app.get("/proxy", (req, res) => {
       }
 
       if (response.headers["set-cookie"]) {
-        cookieJar[urlObj.hostname] = response.headers["set-cookie"]
-          .map((c) => c.split(";")[0])
-          .join("; ");
+        storeCookies(urlObj.hostname, response.headers["set-cookie"]);
       }
 
       let body = "";
