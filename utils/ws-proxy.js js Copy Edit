@@ -1,0 +1,24 @@
+const WebSocket = require("ws");
+function createWebSocketProxy(server) {
+  server.on("upgrade", (req, socket, head) => {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const target = url.searchParams.get("url");
+      if (!target) return socket.destroy();
+
+      const proxy = new WebSocket(target);
+      proxy.on("open", () => {
+        const wss = new WebSocket.Server({ noServer: true });
+        wss.handleUpgrade(req, socket, head, (wsClient) => {
+          wsClient.on("message", (msg) => proxy.send(msg));
+          proxy.on("message", (msg) => wsClient.send(msg));
+          wsClient.on("close", () => proxy.close());
+          proxy.on("close", () => wsClient.close());
+        });
+      });
+    } catch {
+      socket.destroy();
+    }
+  });
+}
+module.exports = { createWebSocketProxy };
