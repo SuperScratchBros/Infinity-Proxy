@@ -1,4 +1,5 @@
 const WebSocket = require("ws");
+
 function createWebSocketProxy(server) {
   server.on("upgrade", (req, socket, head) => {
     try {
@@ -6,7 +7,12 @@ function createWebSocketProxy(server) {
       const target = url.searchParams.get("url");
       if (!target) return socket.destroy();
 
-      const proxy = new WebSocket(target);
+      // Extract subprotocols if any
+      const protocols = req.headers["sec-websocket-protocol"];
+      const protoList = protocols ? protocols.split(",").map(p => p.trim()) : [];
+
+      const proxy = new WebSocket(target, protoList);
+
       proxy.on("open", () => {
         const wss = new WebSocket.Server({ noServer: true });
         wss.handleUpgrade(req, socket, head, (wsClient) => {
@@ -14,11 +20,16 @@ function createWebSocketProxy(server) {
           proxy.on("message", (msg) => wsClient.send(msg));
           wsClient.on("close", () => proxy.close());
           proxy.on("close", () => wsClient.close());
+          wsClient.on("error", () => proxy.close());
+          proxy.on("error", () => wsClient.close());
         });
       });
+
+      proxy.on("error", () => socket.destroy());
     } catch {
       socket.destroy();
     }
   });
 }
+
 module.exports = { createWebSocketProxy };
