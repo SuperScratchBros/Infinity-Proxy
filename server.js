@@ -48,21 +48,36 @@ app.get("/proxy", (req, res) => {
         storeCookies(urlObj.hostname, response.headers["set-cookie"]);
       }
 
-      let body = "";
-      response.setEncoding("utf8");
-      response.on("data", (chunk) => (body += chunk));
-      response.on("end", () => {
-        if (contentType.includes("text/html")) {
-          res.set("content-type", "text/html");
-          res.send(rewriteHTML(body, urlObj));
-        } else if (contentType.includes("text/css")) {
-          res.set("content-type", "text/css");
-          res.send(rewriteCSS(body, urlObj));
-        } else {
-          res.set("content-type", contentType);
-          res.send(body);
-        }
-      });
+      if (contentType.includes("text/html") || contentType.includes("text/css")) {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => (body += chunk));
+        response.on("end", () => {
+          if (contentType.includes("text/html")) {
+            res.set("content-type", "text/html");
+            res.send(rewriteHTML(body, urlObj));
+          } else {
+            res.set("content-type", "text/css");
+            res.send(rewriteCSS(body, urlObj));
+          }
+        });
+      } else if (contentType.includes("application/javascript")) {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => (body += chunk));
+        response.on("end", () => {
+          // Rewrite URLs inside JS string literals
+          const rewritten = body.replace(/(['"])(https?:\/\/[^'"]+)\1/g, (match, quote, url) => {
+            return `${quote}/proxy?url=${encodeURIComponent(url)}${quote}`;
+          });
+          res.set("content-type", "application/javascript");
+          res.send(rewritten);
+        });
+      } else {
+        // Stream other content types directly (media, binary, etc)
+        res.set("content-type", contentType);
+        response.pipe(res);
+      }
     })
     .on("error", () => res.status(500).send("Proxy error"));
 });
